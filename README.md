@@ -10,7 +10,6 @@ and an animated dashboard card.
  
 This project builds on the work of others and through vibe coding with Claude. Thank you to:
  
-* [CatGenie AI](https://www.catgenie.com/) smart litter box by PetNovations.
 * [Rukongai/CatDjinni](https://github.com/Rukongai/CatDjinni): reverse engineering research: signing algorithm, Frida scripts
 * [appkins/hass-catgenie](https://github.com/appkins/hass-catgenie): earlier HA integration (requires manual refresh token)
 * [PrimeAutomation/petnovations](https://github.com/PrimeAutomation/petnovations): earlier HA integration (same limitation)
