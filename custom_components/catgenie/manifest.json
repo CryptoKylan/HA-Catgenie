@@ -4,9 +4,9 @@
   "codeowners": ["bensoae87"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/PrimeAutomation/catgenie-ha",
+  "documentation": "https://github.com/PrimeAutomation/HA-Catgenie",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/PrimeAutomation/catgenie-ha/issues",
+  "issue_tracker": "https://github.com/PrimeAutomation/HA-Catgenie/issues",
   "requirements": ["catgenie==0.1.6"],
-  "version": "0.1.2"
+  "version": "v1.0.0"
 }
