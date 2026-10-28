@@ -1,0 +1,12 @@
+{
+  "domain": "catgenie",
+  "name": "CatGenie A.I.",
+  "codeowners": ["bensoae87"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/PrimeAutomation/catgenie-ha",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/PrimeAutomation/catgenie-ha/issues",
+  "requirements": ["catgenie==0.1.6"],
+  "version": "0.1.2"
+}
