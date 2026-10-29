@@ -41,7 +41,7 @@
       "cartridge_capacity": { "name": "Cartridge capacity" },
       "operation_state": {
         "name": "Operation state",
-        "state": { "idle": "Idle", "cleaning": "Cleaning" }
+        "state": { "idle": "Idle", "cleaning": "Cleaning", "other": "Other" }
       },
       "operation_progress": { "name": "Operation progress" },
       "operation_error": { "name": "Operation error" },

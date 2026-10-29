@@ -7,6 +7,8 @@ from typing import Any
 from catgenie import CatGenieClient, Device
 from catgenie.const import ENDPOINT_DEVICES
 
+from .operation_state import TolerantDevice
+
 
 def _schedule_entry(entry: Any) -> dict[str, Any]:
     """Turn a schedule entry into the dict shape the library's model expects.
@@ -49,7 +51,10 @@ class HomeAssistantCatGenieClient(CatGenieClient):
             ENDPOINT_DEVICES,
             params={"useFleetIndexAndGetRealConnectivity": "true"},
         )
+        # Schedule strings are normalised first, then validated. TolerantDevice
+        # is a local subclass: unrecognized integer operation states are kept
+        # and the dependency model is not monkeypatched.
         return [
-            Device.model_validate(_normalize_thing(thing))
+            TolerantDevice.model_validate(_normalize_thing(thing))
             for thing in data.get("thingList", [])
         ]

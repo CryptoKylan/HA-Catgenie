@@ -17,13 +17,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CatGenieConfigEntry, CatGenieCoordinator
 from .entity import CatGenieEntity
+from .operation_state import cleaning_known
 
 
 @dataclass(frozen=True, kw_only=True)
 class CatGenieBinarySensorDescription(BinarySensorEntityDescription):
     """Describe a CatGenie binary sensor."""
 
-    is_on_fn: Callable[[Device], bool]
+    is_on_fn: Callable[[Device], bool | None]
 
 
 BINARY_SENSORS: tuple[CatGenieBinarySensorDescription, ...] = (
@@ -38,7 +39,8 @@ BINARY_SENSORS: tuple[CatGenieBinarySensorDescription, ...] = (
         key="cleaning",
         translation_key="cleaning",
         device_class=BinarySensorDeviceClass.RUNNING,
-        is_on_fn=lambda d: d.is_cleaning,
+        # None when the integer is not 0 or 1. is_cleaning would be False.
+        is_on_fn=lambda d: cleaning_known(d.operation_status.state),
     ),
     # The meaning of these two flags isn't documented by the vendor, so they
     # are exposed as raw diagnostics and disabled until the user opts in.

@@ -21,6 +21,12 @@ from homeassistant.helpers.typing import StateType
 
 from .coordinator import CatGenieConfigEntry, CatGenieCoordinator
 from .entity import CatGenieEntity, extra
+from .operation_state import (
+    OPERATION_STATE_OPTIONS,
+    operation_error_attributes,
+    operation_state_attributes,
+    operation_state_label,
+)
 
 
 def _cleaning_mode(device: Device) -> str:
@@ -84,8 +90,11 @@ SENSORS: tuple[CatGenieSensorDescription, ...] = (
         key="operation_state",
         translation_key="operation_state",
         device_class=SensorDeviceClass.ENUM,
-        options=["idle", "cleaning"],
-        value_fn=lambda d: "cleaning" if d.is_cleaning else "idle",
+        options=list(OPERATION_STATE_OPTIONS),
+        # 0 idle, 1 cleaning. Any other integer is "other" plus raw_state.
+        # Do not use is_cleaning: it is False for unrecognized states.
+        value_fn=lambda d: operation_state_label(d.operation_status.state),
+        attrs_fn=operation_state_attributes,
     ),
     CatGenieSensorDescription(
         key="operation_progress",
@@ -99,6 +108,7 @@ SENSORS: tuple[CatGenieSensorDescription, ...] = (
         translation_key="operation_error",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.operation_status.error or None,
+        attrs_fn=operation_error_attributes,
     ),
     CatGenieSensorDescription(
         key="cleaning_mode",
