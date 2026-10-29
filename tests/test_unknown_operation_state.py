@@ -312,6 +312,49 @@ class UnknownOperationStateTests(unittest.TestCase):
         self.assertEqual(_MODULES_AFTER, _MODULES_BEFORE)
         self.assertEqual(_PATH_AFTER, _PATH_BEFORE)
 
+    def test_known_code_coercions_are_deliberately_rejected(self) -> None:
+        for value in ("0", "1", 0.0, 1.0, False, True):
+            with self.subTest(value=value):
+                payload = thing("coercion", value)
+                self.assertEqual(Device.model_validate(payload).operation_status.state, int(value))
+                with self.assertRaises(ValidationError):
+                    TolerantDevice.model_validate(payload)
+
+    def test_omitted_operation_status_keeps_dependency_defaults(self) -> None:
+        payload = thing("defaults", 0)
+        del payload["operationStatus"]
+        stock = Device.model_validate(payload)
+        candidate = TolerantDevice.model_validate(payload)
+        self.assertEqual(candidate.operation_status.state, 0)
+        self.assertEqual(candidate.operation_status.progress, 255)
+        self.assertEqual(
+            candidate.model_dump(mode="json", by_alias=True),
+            stock.model_dump(mode="json", by_alias=True),
+        )
+
+    def test_operation_status_aliases_and_inherited_fields(self) -> None:
+        for field_name in ("operationStatus", "operation_status"):
+            with self.subTest(field_name=field_name):
+                payload = thing("aliases", 2, progress=17)
+                operation = payload.pop("operationStatus")
+                operation.update({
+                    "stepNum": 7,
+                    "relayMode": 3,
+                    "sens": "SYNTHETIC-CAT",
+                    "extraStatusField": {"value": "kept"},
+                })
+                payload[field_name] = operation
+                candidate = TolerantDevice.model_validate(payload)
+                self.assertEqual(candidate.operation_status.step_num, 7)
+                self.assertEqual(candidate.operation_status.relay_mode, 3)
+                self.assertTrue(candidate.operation_status.is_cat_detected)
+                serialized = candidate.model_dump(mode="json", by_alias=True)["operationStatus"]
+                self.assertEqual(serialized["state"], 2)
+                self.assertEqual(serialized["progress"], 17)
+                self.assertEqual(serialized["stepNum"], 7)
+                self.assertEqual(serialized["relayMode"], 3)
+                self.assertEqual(serialized["extraStatusField"], {"value": "kept"})
+
 
     def test_synthetic_red_baseline_stock_device_rejects_state_2(self) -> None:
         payload = thing("red-2", 2, error="WATER FILL ISSUE")
