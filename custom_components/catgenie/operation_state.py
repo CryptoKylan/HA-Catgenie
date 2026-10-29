@@ -4,10 +4,10 @@ Stock catgenie 0.1.6 ``OperationState`` accepts only 0 and 1. Firmware has
 reported the integer 2, and ``Device.model_validate`` then rejects the whole
 account payload, which makes every entity unavailable.
 
-Unrecognized integers, including 2, are preserved. They are not mapped to
-idle, running, paused, or error. No meaning is inferred for unrecognized
-states. This module does not retry faults, resume a cycle, or send device
-commands. Command payloads stay untouched.
+Unrecognized integers, including 2, are preserved and displayed with the
+generic Error label. Specific fault reasons are not inferred from the codes.
+This module does not retry faults, resume a cycle, or send device commands.
+Command payloads stay untouched.
 """
 
 from __future__ import annotations
@@ -17,14 +17,14 @@ from typing import Annotated, Any
 from catgenie.models import Device, OperationState, OperationStatus
 from pydantic import BeforeValidator, Field
 
-# Known codes from catgenie.models.OperationState. Anything else is "other".
+# Known idle/running codes retain their labels; the fallback label is Error.
 OPERATION_STATE_IDLE = "idle"
 OPERATION_STATE_CLEANING = "cleaning"
-OPERATION_STATE_OTHER = "other"
+OPERATION_STATE_ERROR = "error"
 OPERATION_STATE_OPTIONS = (
     OPERATION_STATE_IDLE,
     OPERATION_STATE_CLEANING,
-    OPERATION_STATE_OTHER,
+    OPERATION_STATE_ERROR,
 )
 
 
@@ -69,12 +69,12 @@ class TolerantDevice(Device):
 
 
 def operation_state_label(state: int) -> str:
-    """Map only the two library codes. Every other integer is ``other``."""
+    """Keep idle/cleaning labels and display the generic error fallback."""
     if state == OperationState.IDLE:
         return OPERATION_STATE_IDLE
     if state == OperationState.RUNNING:
         return OPERATION_STATE_CLEANING
-    return OPERATION_STATE_OTHER
+    return OPERATION_STATE_ERROR
 
 
 def cleaning_known(state: int) -> bool | None:

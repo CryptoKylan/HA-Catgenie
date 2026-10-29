@@ -91,7 +91,7 @@ SENSORS: tuple[CatGenieSensorDescription, ...] = (
         translation_key="operation_state",
         device_class=SensorDeviceClass.ENUM,
         options=list(OPERATION_STATE_OPTIONS),
-        # 0 idle, 1 cleaning. Any other integer is "other" plus raw_state.
+        # 0 idle, 1 cleaning. The fallback is "error" plus raw_state.
         # Do not use is_cleaning: it is False for unrecognized states.
         value_fn=lambda d: operation_state_label(d.operation_status.state),
         attrs_fn=operation_state_attributes,

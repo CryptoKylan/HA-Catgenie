@@ -1,7 +1,7 @@
 """SYNTHETIC offline regression for unrecognized CatGenie operation states.
 
 Not live device, cloud, or Home Assistant results. Payloads are labeled
-SYNTHETIC. State 2 is preserved as an integer; its meaning is not asserted.
+SYNTHETIC. State 2 is preserved as an integer; its fault reason is not asserted.
 HTTP/HA seams are stubbed. Pydantic models and the integration adapter are real.
 """
 
@@ -41,7 +41,7 @@ SENSOR_KEYS = (
     "network_type",
 )
 BINARY_KEYS = ("online", "cleaning", "low_heater", "fan_shutter")
-FORBIDDEN_LABELS = ("running", "paused", "error", "water_fill", "water-fill")
+FORBIDDEN_LABELS = ("running", "paused", "water_fill", "water-fill")
 
 
 def _stub(name: str, **attrs: object) -> types.ModuleType:
@@ -398,7 +398,7 @@ class UnknownOperationStateTests(unittest.TestCase):
                 self.assertIs(type(device.operation_status), TolerantOperationStatus)
                 self.assertIs(type(device.operation_status.state), int)
                 self.assertEqual(device.operation_status.state, code)
-                self.assertEqual(operation_state_label(code), "other")
+                self.assertEqual(operation_state_label(code), "error")
                 self.assertIsNone(cleaning_known(code))
                 self.assertNotIn(operation_state_label(code), FORBIDDEN_LABELS)
                 self.assertFalse(device.is_cleaning)
@@ -447,7 +447,7 @@ class UnknownOperationStateTests(unittest.TestCase):
             )
         )
         sensors, progress, errors, cleaning = _entities([device])
-        self.assertEqual(sensors[0].native_value, "other")
+        self.assertEqual(sensors[0].native_value, "error")
         self.assertEqual(sensors[0].extra_state_attributes["raw_state"], 2)
         self.assertEqual(
             sensors[0].extra_state_attributes["active_errors"][0],
@@ -501,7 +501,7 @@ class UnknownOperationStateTests(unittest.TestCase):
         self.assertEqual(devices[1].configuration.schedule[0].hour, 6)
         sensors, progress, errors, cleaning = _entities(devices)
         self.assertTrue(all(entity.available for entity in (*sensors, *cleaning)))
-        self.assertEqual([entity.native_value for entity in sensors], ["other", "idle", "cleaning"])
+        self.assertEqual([entity.native_value for entity in sensors], ["error", "idle", "cleaning"])
         self.assertEqual([entity.extra_state_attributes["raw_state"] for entity in sensors], [2, 0, 1])
         self.assertEqual([entity.is_on for entity in cleaning], [None, False, True])
         self.assertEqual(progress[0].native_value, 40)
@@ -511,7 +511,7 @@ class UnknownOperationStateTests(unittest.TestCase):
         self.assertEqual(sensors[0]._attr_unique_id, "unknown-2_operation_state")
         self.assertEqual(cleaning[0]._attr_unique_id, "unknown-2_cleaning")
 
-    def test_synthetic_malformed_device_does_not_parse_as_other(self) -> None:
+    def test_synthetic_malformed_device_does_not_parse_as_error(self) -> None:
         things = [thing("good", 0, progress=255), thing("bad", "2")]
         client = HomeAssistantCatGenieClient(Credentials())
 
@@ -526,16 +526,16 @@ class UnknownOperationStateTests(unittest.TestCase):
         self.assertEqual(tuple(item.key for item in SENSORS), SENSOR_KEYS)
         self.assertEqual(tuple(item.key for item in BINARY_SENSORS), BINARY_KEYS)
         operation = _sensor("operation_state")
-        self.assertEqual(operation.options, ["idle", "cleaning", "other"])
+        self.assertEqual(operation.options, ["idle", "cleaning", "error"])
         self.assertNotIn("running", operation.options)
         self.assertNotIn("paused", operation.options)
-        self.assertNotIn("error", operation.options)
+        self.assertIn("error", operation.options)
         translation = json.loads(
             (CANDIDATE / "custom_components/catgenie/translations/en.json").read_text()
         )
         states = translation["entity"]["sensor"]["operation_state"]["state"]
-        self.assertEqual(states["other"], "Other")
-        self.assertEqual(set(states), {"idle", "cleaning", "other"})
+        self.assertEqual(states["error"], "Error")
+        self.assertEqual(set(states), {"idle", "cleaning", "error"})
 
 
 if __name__ == "__main__":
