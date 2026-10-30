@@ -308,6 +308,45 @@ def _entities(devices: list[TolerantDevice]):
 class UnknownOperationStateTests(unittest.TestCase):
     """SYNTHETIC red baseline and green candidate coverage."""
 
+    def test_missing_cartridge_active_error_five_with_idle_state(self) -> None:
+        device = TolerantDevice.model_validate(thing("cartridge", 0, active_errors=[5]))
+        states, _, errors, cleaning = _entities([device])
+        self.assertEqual(errors[0].native_value, "Cleaning solution cartridge missing")
+        self.assertEqual(errors[0].extra_state_attributes, {"active_errors": [5]})
+        self.assertEqual(states[0].native_value, "idle")
+        self.assertEqual(states[0].extra_state_attributes["raw_state"], 0)
+        self.assertIs(cleaning[0].is_on, False)
+
+    def test_operation_state_five_is_not_cartridge_error_five(self) -> None:
+        device = TolerantDevice.model_validate(thing("different-domain", 5))
+        states, _, errors, _ = _entities([device])
+        self.assertEqual(states[0].native_value, "error")
+        self.assertIsNone(errors[0].native_value)
+
+    def test_unknown_active_error_remains_visible(self) -> None:
+        device = TolerantDevice.model_validate(thing("unknown", 0, active_errors=[99]))
+        _, _, errors, _ = _entities([device])
+        self.assertEqual(errors[0].native_value, "Unknown error code: 99")
+        self.assertEqual(errors[0].extra_state_attributes["active_errors"], [99])
+
+    def test_mixed_codes_do_not_hide_unknown_errors(self) -> None:
+        device = TolerantDevice.model_validate(thing("mixed", 0, active_errors=[5, 99]))
+        _, _, errors, _ = _entities([device])
+        self.assertEqual(errors[0].native_value, "Cleaning solution cartridge missing; Unknown error code: 99")
+        self.assertEqual(errors[0].extra_state_attributes["active_errors"], [5, 99])
+
+    def test_vendor_error_text_takes_precedence(self) -> None:
+        device = TolerantDevice.model_validate(thing("text", 0, error="Vendor detail", active_errors=[5]))
+        _, _, errors, _ = _entities([device])
+        self.assertEqual(errors[0].native_value, "Vendor detail")
+        self.assertEqual(errors[0].extra_state_attributes["active_errors"], [5])
+
+    def test_empty_and_malformed_codes_are_not_invented_mappings(self) -> None:
+        for active, expected in [([], None), (["5"], "Unknown error code: 5"), ([True], "Unknown error code: True"), ([5.0], "Unknown error code: 5.0")]:
+            with self.subTest(active=active):
+                device = TolerantDevice.model_validate(thing("typed", 0, active_errors=active))
+                self.assertEqual(_entities([device])[2][0].native_value, expected)
+
     def test_import_seams_restore_modules_and_search_path(self) -> None:
         self.assertEqual(_MODULES_AFTER, _MODULES_BEFORE)
         self.assertEqual(_PATH_AFTER, _PATH_BEFORE)

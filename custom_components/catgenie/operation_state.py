@@ -5,7 +5,7 @@ reported the integer 2, and ``Device.model_validate`` then rejects the whole
 account payload, which makes every entity unavailable.
 
 Unrecognized integers, including 2, are preserved and displayed with the
-generic Error label. Specific fault reasons are not inferred from the codes.
+generic Error label. Specific fault reasons are not inferred from state codes.
 This module does not retry faults, resume a cycle, or send device commands.
 Command payloads stay untouched.
 """
@@ -119,6 +119,24 @@ def operation_state_attributes(device: Device) -> dict[str, Any]:
         "raw_state": int(device.operation_status.state),
         "active_errors": json_safe(device.active_errors),
     }
+
+
+def operation_error_label(device: Device) -> str | None:
+    """Prefer vendor text, otherwise describe active error codes.
+
+    activeErrors is a separate namespace from operationStatus.state.
+    Code 5 was observed on an A.I. running 8.7.205R when its cleaning
+    solution cartridge was removed. Other codes remain explicitly unknown.
+    """
+    if device.operation_status.error:
+        return device.operation_status.error
+    labels = []
+    for code in device.active_errors or []:
+        if type(code) is int and code == 5:
+            labels.append("Cleaning solution cartridge missing")
+        else:
+            labels.append(f"Unknown error code: {json_safe(code)}")
+    return "; ".join(labels) or None
 
 
 def operation_error_attributes(device: Device) -> dict[str, Any]:

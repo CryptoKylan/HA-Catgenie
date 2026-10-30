@@ -21,6 +21,21 @@ Also used directly:
 The integration was written from scratch. The sensor list follows the earlier
 PrimeAutomation integration, but no code was copied from it.
  
+## Observed active-error codes
+
+The `operation_error` sensor preserves nonempty vendor error text. When that
+text is absent, it describes `activeErrors` without changing the separate
+`operationStatus.state` value:
+
+- **5 — Cleaning solution cartridge missing.** Observed on a CatGenie A.I.
+  running firmware 8.7.205R after physically removing its SaniSolution
+  cartridge. In that observation the operation state remained 0 (idle).
+- Other active-error codes remain explicitly unknown, with their raw values
+  retained in the `active_errors` attribute. This is not a complete or
+  manufacturer-verified error catalogue.
+
+This diagnostic mapping does not start, stop, retry or reset the device.
+
 ## Repository layout
  
 ```

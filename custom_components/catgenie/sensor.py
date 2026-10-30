@@ -24,6 +24,7 @@ from .entity import CatGenieEntity, extra
 from .operation_state import (
     OPERATION_STATE_OPTIONS,
     operation_error_attributes,
+    operation_error_label,
     operation_state_attributes,
     operation_state_label,
 )
@@ -107,7 +108,7 @@ SENSORS: tuple[CatGenieSensorDescription, ...] = (
         key="operation_error",
         translation_key="operation_error",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: d.operation_status.error or None,
+        value_fn=operation_error_label,
         attrs_fn=operation_error_attributes,
     ),
     CatGenieSensorDescription(
