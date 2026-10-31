@@ -321,7 +321,7 @@ class UnknownOperationStateTests(unittest.TestCase):
         device = TolerantDevice.model_validate(thing("different-domain", 5))
         states, _, errors, _ = _entities([device])
         self.assertEqual(states[0].native_value, "error")
-        self.assertIsNone(errors[0].native_value)
+        self.assertEqual(errors[0].native_value, "Error reported (operation state: 5)")
 
     def test_unknown_active_error_remains_visible(self) -> None:
         device = TolerantDevice.model_validate(thing("unknown", 0, active_errors=[99]))
@@ -342,7 +342,7 @@ class UnknownOperationStateTests(unittest.TestCase):
         self.assertEqual(errors[0].extra_state_attributes["active_errors"], [5])
 
     def test_empty_and_malformed_codes_are_not_invented_mappings(self) -> None:
-        for active, expected in [([], None), (["5"], "Unknown error code: 5"), ([True], "Unknown error code: True"), ([5.0], "Unknown error code: 5.0")]:
+        for active, expected in [([], "No active errors"), (["5"], "Unknown error code: 5"), ([True], "Unknown error code: True"), ([5.0], "Unknown error code: 5.0")]:
             with self.subTest(active=active):
                 device = TolerantDevice.model_validate(thing("typed", 0, active_errors=active))
                 self.assertEqual(_entities([device])[2][0].native_value, expected)
@@ -575,6 +575,164 @@ class UnknownOperationStateTests(unittest.TestCase):
         states = translation["entity"]["sensor"]["operation_state"]["state"]
         self.assertEqual(states["error"], "Error")
         self.assertEqual(set(states), {"idle", "cleaning", "error"})
+
+
+class ErrorReportingTests(unittest.TestCase):
+    """Exercise error descriptions through the real sensor implementation."""
+
+    def test_water_fill_active_code_is_independent_of_operation_state(self) -> None:
+        for state in (0, 1, 2):
+            with self.subTest(state=state):
+                device = TolerantDevice.model_validate(
+                    thing("water-fill", state, active_errors=[2])
+                )
+                states, _, errors, _ = _entities([device])
+                self.assertEqual(errors[0].native_value, "Water fill issue")
+                self.assertEqual(errors[0].extra_state_attributes, {"active_errors": [2]})
+                attrs = states[0].extra_state_attributes
+                assert attrs is not None
+                self.assertEqual(attrs["raw_state"], state)
+
+    def test_normal_idle_and_cleaning_have_explicit_no_error_label(self) -> None:
+        for state, progress in ((0, 255), (1, 0), (1, 50), (1, 100)):
+            with self.subTest(state=state, progress=progress):
+                device = TolerantDevice.model_validate(
+                    thing("normal", state, progress=progress)
+                )
+                _, _, errors, _ = _entities([device])
+                self.assertEqual(errors[0].native_value, "No active errors")
+                self.assertEqual(errors[0].extra_state_attributes, {"active_errors": []})
+
+    def test_abnormal_state_with_empty_codes_is_not_reported_clear(self) -> None:
+        for state in (2, 5, 99, -1):
+            with self.subTest(state=state):
+                device = TolerantDevice.model_validate(thing("state-only", state))
+                value = _entities([device])[2][0].native_value
+                assert isinstance(value, str)
+                self.assertEqual(value, f"Error reported (operation state: {state})")
+                self.assertNotIn("Water fill", value)
+                self.assertNotIn("cartridge", value)
+
+    def test_missing_active_errors_is_not_an_explicit_clear_report(self) -> None:
+        for name in ("activeErrors", "active_errors"):
+            with self.subTest(alias=name):
+                payload = thing("missing-errors", 0)
+                del payload["activeErrors"]
+                if name == "active_errors":
+                    payload[name] = []
+                    device = TolerantDevice.model_validate(payload)
+                    self.assertEqual(_entities([device])[2][0].native_value, "No active errors")
+                else:
+                    device = TolerantDevice.model_validate(payload)
+                    self.assertIsNone(_entities([device])[2][0].native_value)
+
+    def test_defaulted_operation_status_is_not_an_explicit_clear_report(self) -> None:
+        payload = thing("missing-status", 0)
+        del payload["operationStatus"]
+        device = TolerantDevice.model_validate(payload)
+        self.assertIsNone(_entities([device])[2][0].native_value)
+
+    def test_offline_device_does_not_report_no_active_errors(self) -> None:
+        payload = thing("offline", 0)
+        payload["reportedStatus"] = "disconnected"
+        device = TolerantDevice.model_validate(payload)
+        self.assertFalse(device.is_online)
+        self.assertIsNone(_entities([device])[2][0].native_value)
+
+    def test_blank_vendor_text_does_not_hide_codes_or_normal_state(self) -> None:
+        for state, active, expected in (
+            (0, [], "No active errors"),
+            (2, [2], "Water fill issue"),
+            (0, [5], "Cleaning solution cartridge missing"),
+            (99, [], "Error reported (operation state: 99)"),
+        ):
+            with self.subTest(state=state, active=active):
+                device = TolerantDevice.model_validate(
+                    thing("blank-text", state, error=" \t\n ", active_errors=active)
+                )
+                self.assertEqual(_entities([device])[2][0].native_value, expected)
+
+    def test_water_fill_lookalikes_remain_explicitly_unmapped(self) -> None:
+        for code in ("2", 2.0, True, False, None):
+            with self.subTest(code=code):
+                device = TolerantDevice.model_validate(
+                    thing("lookalike", 0, active_errors=[code])
+                )
+                self.assertEqual(
+                    _entities([device])[2][0].native_value,
+                    f"Unknown error code: {code}",
+                )
+
+    def test_known_and_unknown_faults_keep_order_and_diagnostics(self) -> None:
+        device = TolerantDevice.model_validate(
+            thing("mixed-faults", 2, active_errors=[2, 5, 99, 2])
+        )
+        _, _, errors, _ = _entities([device])
+        self.assertEqual(
+            errors[0].native_value,
+            "Water fill issue; Cleaning solution cartridge missing; "
+            "Unknown error code: 99; Water fill issue",
+        )
+        attrs = errors[0].extra_state_attributes
+        assert attrs is not None
+        self.assertEqual(attrs["active_errors"], [2, 5, 99, 2])
+
+    def test_normal_cycle_preserves_numeric_progress_and_error_sensor_identity(self) -> None:
+        device = TolerantDevice.model_validate(thing("cycle", 0, progress=255))
+        sensors, progress, errors, _ = _entities([device])
+        for state, pct in ((1, 50), (1, 100), (0, 255)):
+            with self.subTest(state=state, progress=pct):
+                update = TolerantDevice.model_validate(thing("cycle", state, progress=pct))
+                for entity in (*sensors, *progress, *errors):
+                    entity.coordinator.data["cycle"] = update
+                self.assertEqual(errors[0].native_value, "No active errors")
+                self.assertEqual(errors[0]._attr_unique_id, "cycle_operation_error")
+                self.assertEqual(progress[0].native_value, None if pct == 255 else pct)
+
+    def test_fault_clear_updates_existing_error_sensor(self) -> None:
+        device = TolerantDevice.model_validate(thing("recovery", 2, active_errors=[2]))
+        _, _, errors, _ = _entities([device])
+        self.assertEqual(errors[0].native_value, "Water fill issue")
+        errors[0].coordinator.data["recovery"] = TolerantDevice.model_validate(
+            thing("recovery", 1, progress=17)
+        )
+        self.assertEqual(errors[0].native_value, "No active errors")
+        attrs = errors[0].extra_state_attributes
+        assert attrs is not None
+        self.assertEqual(attrs["active_errors"], [])
+
+    def test_missing_device_has_no_value_and_is_unavailable(self) -> None:
+        device = TolerantDevice.model_validate(thing("gone", 0))
+        _, _, errors, _ = _entities([device])
+        errors[0].coordinator.data.clear()
+        self.assertIsNone(errors[0].native_value)
+        self.assertIsNone(errors[0].extra_state_attributes)
+        self.assertFalse(errors[0].available)
+
+    def test_long_vendor_text_is_bounded_without_losing_full_detail(self) -> None:
+        text = "Vendor detail " * 30
+        device = TolerantDevice.model_validate(
+            thing("long-vendor", 2, error=text, active_errors=[2])
+        )
+        error = _entities([device])[2][0]
+        value = error.native_value
+        attrs = error.extra_state_attributes
+        assert isinstance(value, str) and attrs is not None
+        self.assertEqual(len(value), 255)
+        self.assertTrue(value.endswith("..."))
+        self.assertEqual(attrs["error_details"], text)
+        self.assertEqual(attrs["active_errors"], [2])
+
+    def test_long_active_code_list_keeps_every_raw_code(self) -> None:
+        active = list(range(100, 130))
+        device = TolerantDevice.model_validate(thing("long-codes", 0, active_errors=active))
+        error = _entities([device])[2][0]
+        value = error.native_value
+        attrs = error.extra_state_attributes
+        assert isinstance(value, str) and attrs is not None
+        self.assertEqual(len(value), 255)
+        self.assertEqual(attrs["active_errors"], active)
+        self.assertIn("Unknown error code: 129", attrs["error_details"])
 
 
 if __name__ == "__main__":

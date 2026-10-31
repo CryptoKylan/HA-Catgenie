@@ -121,24 +121,60 @@ def operation_state_attributes(device: Device) -> dict[str, Any]:
     }
 
 
-def operation_error_label(device: Device) -> str | None:
-    """Prefer vendor text, otherwise describe active error codes.
+# Verified active-error codes are separate from operation-state integers.
+_ACTIVE_ERROR_LABELS = {
+    2: "Water fill issue",
+    5: "Cleaning solution cartridge missing",
+}
+_MAX_ERROR_STATE_LENGTH = 255  # Home Assistant's maximum state-string length.
 
-    activeErrors is a separate namespace from operationStatus.state.
-    Code 5 was observed on an A.I. running 8.7.205R when its cleaning
-    solution cartridge was removed. Other codes remain explicitly unknown.
-    """
-    if device.operation_status.error:
-        return device.operation_status.error
+
+def _operation_error_details(device: Device) -> str | None:
+    """Describe a reported fault without inventing a clear or fault reason."""
+    vendor_error = device.operation_status.error
+    if vendor_error.strip():
+        return vendor_error
+
     labels = []
     for code in device.active_errors or []:
-        if type(code) is int and code == 5:
-            labels.append("Cleaning solution cartridge missing")
+        if type(code) is int and code in _ACTIVE_ERROR_LABELS:
+            labels.append(_ACTIVE_ERROR_LABELS[code])
         else:
             labels.append(f"Unknown error code: {json_safe(code)}")
-    return "; ".join(labels) or None
+    if labels:
+        return "; ".join(labels)
+
+    state = device.operation_status.state
+    if state not in (OperationState.IDLE, OperationState.RUNNING):
+        return f"Error reported (operation state: {state})"
+
+    # Pydantic supplies idle/empty defaults when fields are absent. Those
+    # defaults, or a disconnected device, are not a fresh no-fault report.
+    if (
+        device.is_online
+        and {"operation_status", "active_errors"} <= device.model_fields_set
+    ):
+        return "No active errors"
+    return None
+
+
+def operation_error_label(device: Device) -> str | None:
+    """Prefer vendor text, then observed active-error descriptions.
+
+    Only active-error integers 2 and 5 have observed fault descriptions;
+    operation-state integers never select these fault-specific labels.
+    Long messages are bounded for HA, with full details kept in attributes.
+    """
+    details = _operation_error_details(device)
+    if details is not None and len(details) > _MAX_ERROR_STATE_LENGTH:
+        return details[: _MAX_ERROR_STATE_LENGTH - 3] + "..."
+    return details
 
 
 def operation_error_attributes(device: Device) -> dict[str, Any]:
-    """Diagnostic copy of the raw activeErrors list."""
-    return {"active_errors": json_safe(device.active_errors)}
+    """Keep raw active errors and any full message too long for the state."""
+    attributes = {"active_errors": json_safe(device.active_errors)}
+    details = _operation_error_details(device)
+    if details is not None and len(details) > _MAX_ERROR_STATE_LENGTH:
+        attributes["error_details"] = details
+    return attributes
