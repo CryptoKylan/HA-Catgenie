@@ -121,10 +121,15 @@ def operation_state_attributes(device: Device) -> dict[str, Any]:
     }
 
 
-# Verified active-error codes are separate from operation-state integers.
+# Active-error codes are separate from operation-state integers.
+# 2/5 were observed on an A.I.; 3/4/6 come from Android app 1.8.253.
+# See README.md for the app enum/message path and provenance.
 _ACTIVE_ERROR_LABELS = {
     2: "Water fill issue",
+    3: "Drainage issue",
+    4: "Dryer overheating",
     5: "Cleaning solution cartridge missing",
+    6: "Cleaning solution cartridge empty",
 }
 _MAX_ERROR_STATE_LENGTH = 255  # Home Assistant's maximum state-string length.
 
@@ -159,9 +164,9 @@ def _operation_error_details(device: Device) -> str | None:
 
 
 def operation_error_label(device: Device) -> str | None:
-    """Prefer vendor text, then observed active-error descriptions.
+    """Prefer vendor text, then observed or app-derived error descriptions.
 
-    Only active-error integers 2 and 5 have observed fault descriptions;
+    Observed and app-derived active-error integers select descriptions;
     operation-state integers never select these fault-specific labels.
     Long messages are bounded for HA, with full details kept in attributes.
     """

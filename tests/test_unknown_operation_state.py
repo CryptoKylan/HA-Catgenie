@@ -593,6 +593,67 @@ class ErrorReportingTests(unittest.TestCase):
                 assert attrs is not None
                 self.assertEqual(attrs["raw_state"], state)
 
+    def test_app_derived_fault_codes_are_independent_of_operation_state(self) -> None:
+        mappings = {
+            3: "Drainage issue",
+            4: "Dryer overheating",
+            6: "Cleaning solution cartridge empty",
+        }
+        for code, expected in mappings.items():
+            for state in (0, 1, 2, 3, 4, 6, 99):
+                with self.subTest(code=code, state=state):
+                    device = TolerantDevice.model_validate(
+                        thing("app-derived", state, active_errors=[code])
+                    )
+                    states, _, errors, _ = _entities([device])
+                    self.assertEqual(errors[0].native_value, expected)
+                    self.assertEqual(errors[0].extra_state_attributes, {"active_errors": [code]})
+                    attrs = states[0].extra_state_attributes
+                    assert attrs is not None
+                    self.assertEqual(attrs["raw_state"], state)
+
+    def test_app_derived_operation_states_do_not_select_fault_descriptions(self) -> None:
+        for state in (3, 4, 6):
+            with self.subTest(state=state):
+                device = TolerantDevice.model_validate(thing("state-only", state))
+                self.assertEqual(
+                    _entities([device])[2][0].native_value,
+                    f"Error reported (operation state: {state})",
+                )
+
+    def test_app_derived_code_lookalikes_remain_unknown(self) -> None:
+        for code in ("3", 3.0, "4", 4.0, "6", 6.0):
+            with self.subTest(code=code):
+                device = TolerantDevice.model_validate(
+                    thing("app-lookalike", 0, active_errors=[code])
+                )
+                self.assertEqual(
+                    _entities([device])[2][0].native_value,
+                    f"Unknown error code: {code}",
+                )
+
+    def test_vendor_text_wins_over_all_app_derived_codes(self) -> None:
+        for code in (3, 4, 6):
+            with self.subTest(code=code):
+                device = TolerantDevice.model_validate(
+                    thing("vendor-priority", 0, error="Vendor diagnosis", active_errors=[code])
+                )
+                error = _entities([device])[2][0]
+                self.assertEqual(error.native_value, "Vendor diagnosis")
+                self.assertEqual(error.extra_state_attributes, {"active_errors": [code]})
+
+    def test_mixed_observed_app_derived_and_unknown_codes_keep_order(self) -> None:
+        codes = [2, 3, 4, 5, 6, 99, 3]
+        device = TolerantDevice.model_validate(thing("all-faults", 0, active_errors=codes))
+        error = _entities([device])[2][0]
+        self.assertEqual(
+            error.native_value,
+            "Water fill issue; Drainage issue; Dryer overheating; "
+            "Cleaning solution cartridge missing; Cleaning solution cartridge empty; "
+            "Unknown error code: 99; Drainage issue",
+        )
+        self.assertEqual(error.extra_state_attributes, {"active_errors": codes})
+
     def test_normal_idle_and_cleaning_have_explicit_no_error_label(self) -> None:
         for state, progress in ((0, 255), (1, 0), (1, 50), (1, 100)):
             with self.subTest(state=state, progress=progress):

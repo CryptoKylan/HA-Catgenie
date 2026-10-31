@@ -18,8 +18,9 @@ set `CATGENIE_TEST_DEPENDENCY` to the directory containing its `catgenie` packag
 The installed dependency is used when that variable is unset.
 
 The suite covers strict integer-state validation, both field aliases, inherited
-model fields and schedule normalization; error codes 2 and 5 in their separate
-namespace; vendor text, unmapped and mixed codes; normal operation and fault
-clearing; missing/offline data; stable entity identities; and long error states
-with complete diagnostic details. It also replays a synthetic normal-cycle
+model fields and schedule normalization; observed error codes 2 and 5 and
+app-derived codes 3, 4 and 6 in their separate namespace; vendor text, unmapped
+and mixed codes; normal operation and fault clearing; missing/offline data;
+stable entity identities; and long error states with complete diagnostic details.
+It also replays a synthetic normal-cycle
 sequence through the actual sensor classes without changing progress semantics.

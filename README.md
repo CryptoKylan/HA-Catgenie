@@ -30,17 +30,28 @@ An unrecognized operation state does not supply a fault-specific diagnosis.
 The cleaning binary sensor is unknown for these states, not falsely off.
 
 The `operation_error` sensor prefers nonblank vendor error text. Otherwise,
-it describes the separate `activeErrors` list using these observed mappings:
+it describes the separate `activeErrors` list using these mappings:
+
+Observed on a CatGenie A.I. running firmware 8.7.205R:
 
 - **2 — Water fill issue.** Observed with operation state 2 and the same
   description in the official app.
 - **5 — Cleaning solution cartridge missing.** Observed after removing the
   SaniSolution cartridge while operation state remained 0 (idle).
 
-Both observations were on a CatGenie A.I. running firmware 8.7.205R. This is
-not a complete manufacturer error catalogue. Other active-error values stay
-explicitly unknown, and the raw list remains in `active_errors`. String,
-float and boolean lookalikes do not select the observed integer mappings.
+Derived from the CatGenie Android app 1.8.253, not reproduced on that unit:
+
+- **3 — Drainage issue** (`DRAINAGE_PROBLEM`).
+- **4 — Dryer overheating** (`BI_METAL`).
+- **6 — Cleaning solution cartridge empty** (`EMPTY_CARTRIDGE`).
+
+The app uses these definitions to interpret `activeErrors`, not just push
+notifications. See [app-derived code evidence](docs/error-code-provenance.md)
+for the enum/message path, archive version and reproducibility details.
+
+This is not a complete manufacturer error catalogue. Other active-error values
+stay explicitly unknown, and the raw list remains in `active_errors`. String,
+float and boolean lookalikes do not select the integer mappings.
 
 An online device explicitly reporting a normal operation state and an empty
 active-error list displays **No active errors**. Missing fields and offline
