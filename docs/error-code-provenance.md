@@ -16,9 +16,13 @@ The app's shared `NOTIFICATION_TYPES` object defines:
 
 These are also used for device faults. The device-card constructor passes its
 `activeErrors` array into `_getStatusMap`, which passes it into
-`_getErrorWarningsSortedList`. Each raw code indexes `TYPE_TO_LEVEL_MAPPER` and
-is passed to `getNotificationIntlMessage`. That message-selection switch uses
-the enum above and returns the corresponding English message object.
+`_getErrorWarningsSortedList`. Each raw code indexes the shared
+`TYPE_TO_LEVEL_MAPPER`, establishing the active-error namespace connection.
+
+For labels, `getNotificationIntlMessage` switches on an object's `type` field
+using the same enum. A separate status-label call passes `{type: code}` and
+selects the corresponding English message object. The raw-code call in the
+sorted-list helper alone would not prove successful message selection.
 
 This trace is important: matching notification numbers alone would not establish
 that they describe the device's active-error namespace. Operation-state integers
