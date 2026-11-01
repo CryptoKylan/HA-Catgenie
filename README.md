@@ -6,6 +6,12 @@ It signs in the way the official app does (phone number plus SMS code), so no
 token has to be captured by hand, and it exposes the unit's status, controls
 and an animated dashboard card.
  
+## Review branch
+
+For a grouped summary of additions and fixes relative to upstream, start with
+[the review overview](docs/review-overview.md). It links the feature guides,
+validation results and remaining boundaries.
+
 ## Credits
  
 This project builds on the work of others and through vibe coding with Claude. Thank you to:
