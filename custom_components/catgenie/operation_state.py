@@ -4,8 +4,13 @@ Stock catgenie 0.1.6 ``OperationState`` accepts only 0 and 1. Firmware has
 reported the integer 2, and ``Device.model_validate`` then rejects the whole
 account payload, which makes every entity unavailable.
 
-Unrecognized integers, including 2, are preserved and displayed with the
-generic Error label. Specific fault reasons are not inferred from state codes.
+Unrecognized integers are preserved. Reported state 2 is app SUSPENDED
+(function #6945 maps it to STOPPED). It displays as paused only when that
+same report has an explicit empty active-error list, blank vendor text, and
+an explicit connected status. A missing or malformed error list is not that
+report. Active errors, including water-fill code 2, stay faults and take
+priority. Other unrecognized integers keep the generic Error label. Specific
+fault reasons are not inferred from state codes.
 This module does not retry faults, resume a cycle, or send device commands.
 Command payloads stay untouched.
 """
@@ -15,15 +20,21 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from catgenie.models import Device, OperationState, OperationStatus
-from pydantic import BeforeValidator, Field
+from pydantic import BeforeValidator, Field, PrivateAttr, model_validator
+
+from .reported_config import measurement_snapshot
+
+from .operation_status import preserve_raw_progress, reported_normal_pause
 
 # Known idle/running codes retain their labels; the fallback label is Error.
 OPERATION_STATE_IDLE = "idle"
 OPERATION_STATE_CLEANING = "cleaning"
+OPERATION_STATE_PAUSED = "paused"
 OPERATION_STATE_ERROR = "error"
 OPERATION_STATE_OPTIONS = (
     OPERATION_STATE_IDLE,
     OPERATION_STATE_CLEANING,
+    OPERATION_STATE_PAUSED,
     OPERATION_STATE_ERROR,
 )
 
@@ -49,6 +60,12 @@ class TolerantOperationStatus(OperationStatus):
 
     state: IntegerOperationState = Field(alias="state")
 
+    @model_validator(mode="wrap")
+    @classmethod
+    def _keep_raw_progress(cls, data, handler):
+        """Retain the original progress value for strict display sensors."""
+        return preserve_raw_progress(data, handler)
+
 
 class TolerantDevice(Device):
     """``Device`` subclass that validates ``operationStatus`` tolerantly.
@@ -60,6 +77,17 @@ class TolerantDevice(Device):
     ``catgenie.models.Device``.
     """
 
+    _reported_measurements: dict[str, Any] | None = PrivateAttr(default=None)
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _keep_reported_measurements(cls, data, handler):
+        snapshot = measurement_snapshot(data) if isinstance(data, dict) else None
+        device = handler(data)
+        if snapshot is not None:
+            device._reported_measurements = snapshot
+        return device
+
     operation_status: TolerantOperationStatus = Field(
         alias="operationStatus",
         default_factory=lambda: TolerantOperationStatus.model_validate(
@@ -69,12 +97,30 @@ class TolerantDevice(Device):
 
 
 def operation_state_label(state: int) -> str:
-    """Keep idle/cleaning labels and display the generic error fallback."""
+    """Keep idle/cleaning labels and display the generic error fallback.
+
+    Integer 2 is not paused here. A pause requires the explicit no-error
+    report checked by ``operation_state_value``.
+    """
     if state == OperationState.IDLE:
         return OPERATION_STATE_IDLE
     if state == OperationState.RUNNING:
         return OPERATION_STATE_CLEANING
     return OPERATION_STATE_ERROR
+
+
+def operation_state_value(device: Device) -> str | None:
+    """Enum label. A disconnected pause is not itself a reported fault."""
+    if reported_normal_pause(device):
+        return OPERATION_STATE_PAUSED
+    if (
+        device.operation_status.state == 2
+        and not device.is_online
+        and not device.active_errors
+        and not device.operation_status.error.strip()
+    ):
+        return None
+    return operation_state_label(device.operation_status.state)
 
 
 def cleaning_known(state: int) -> bool | None:
@@ -150,7 +196,12 @@ def _operation_error_details(device: Device) -> str | None:
         return "; ".join(labels)
 
     state = device.operation_status.state
-    if state not in (OperationState.IDLE, OperationState.RUNNING):
+    if state == 2 and not device.is_online:
+        return None
+    if (
+        state not in (OperationState.IDLE, OperationState.RUNNING)
+        and not reported_normal_pause(device)
+    ):
         return f"Error reported (operation state: {state})"
 
     # Pydantic supplies idle/empty defaults when fields are absent. Those

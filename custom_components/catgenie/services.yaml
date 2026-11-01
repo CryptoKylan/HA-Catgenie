@@ -1,0 +1,122 @@
+set_do_not_disturb:
+  name: Set do not disturb
+  description: >
+    Settings action for one CatGenie. This is the native action form, not a
+    device-page time entity. Enabled clocks are converted on the selected
+    IANA zone and reference date (today in that zone if omitted) to UTC
+    HH:MM:SS, matching the official app's current-date save. Overnight
+    windows use that same date for both ends. This is not a DST-safe
+    recurring wall-clock guarantee, and firmware timezone or DST fields are
+    not rewritten. Disable sends two empty clocks; firmware acceptance of this
+    integration write is unverified. No automatic DST resave. The action does
+    not enforce the app UI's ten-hour cap; that is not a proven server limit.
+  fields:
+    device_id:
+      name: Device
+      description: CatGenie device. This is a Home Assistant device id, not a raw vendor id.
+      required: true
+      example: ""
+      selector:
+        device:
+          multiple: false
+          filter:
+            integration: catgenie
+            manufacturer: PetNovations
+    enabled:
+      name: Enabled
+      description: Turn the window on or off. Off does not require start or end times.
+      required: true
+      selector:
+        boolean:
+    start_time:
+      name: Start
+      description: Local start when enabled. Ignored when disabled. Not a device-page time entity.
+      required: false
+      selector:
+        time:
+    end_time:
+      name: End
+      description: Local end when enabled. An overnight end stays on the same reference date.
+      required: false
+      selector:
+        time:
+    timezone:
+      name: Time zone
+      description: >
+        IANA zone for this save, for example America/Toronto. Required when
+        enabled. Not configuration.timezone and not the Home Assistant host zone.
+      required: false
+      selector:
+        text:
+    reference_date:
+      name: Reference date
+      description: >
+        Calendar date for the conversion. Defaults to today in the selected
+        zone. Both clocks use this date.
+      required: false
+      selector:
+        date:
+
+set_schedule:
+  name: Set cleaning schedule
+  description: >
+    Replace the cleaning schedule from a native action form.
+    This is not a device-page calendar and not a JSON text box.
+    Each row is one local wall clock. The action converts every
+    clock on the reference date in the required IANA zone and
+    PUTs only {schedule: [UTC HH:mm:ss]}. It does not send mode,
+    manual, Do Not Disturb, cat delay, volume, or auto-lock.
+    An empty list is refused. Stored UTC clocks do not guarantee
+    the same wall time after a DST change; nothing here resaves.
+  fields:
+    device_id:
+      name: Device
+      description: One CatGenie device registry entry.
+      required: true
+      selector:
+        device:
+          integration: catgenie
+          manufacturer: PetNovations
+          multiple: false
+      example: ""
+    times:
+      name: Local clocks
+      description: >
+        One to eight rows. Each row is an object with a time
+        field, because TimeSelector has no multiple option.
+        The value must be zero-padded HH:mm:ss, not HH:mm and
+        not a day/hour/minute object. Clocks must be unique and
+        at least 120 minutes apart in both directions, including
+        across midnight. Seconds are required; they are not invented.
+      required: true
+      selector:
+        object:
+          multiple: true
+          label_field: time
+          fields:
+            time:
+              label: Local time
+              required: true
+              selector:
+                time: {}
+      example: '[{"time": "07:30:00"}, {"time": "19:30:00"}]'
+    zone:
+      name: IANA time zone
+      description: >
+        Explicit IANA zone used for conversion, such as
+        America/New_York. Not configuration.timezone, not a
+        fixed offset, and not the Home Assistant or device zone.
+      required: true
+      selector:
+        text: {}
+      example: America/New_York
+    reference_date:
+      name: Reference date
+      description: >
+        Calendar date in that IANA zone, YYYY-MM-DD. Defaults to
+        today in the zone. Every clock uses this date. An earlier
+        clock is not treated as the next day.
+      required: false
+      selector:
+        date: {}
+      example: "2026-10-31"

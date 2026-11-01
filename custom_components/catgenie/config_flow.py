@@ -9,6 +9,7 @@ from typing import Any
 
 import voluptuous as vol
 from catgenie import CatGenieAuth, CatGenieAuthenticationError, CatGenieException
+from curl_cffi.requests.exceptions import RequestException
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow, ConfigFlowResult
 
 from .const import (
@@ -58,11 +59,15 @@ class CatGenieConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 auth = CatGenieAuth()
                 try:
-                    await auth.request_login_code(int(country), phone)
-                except CatGenieException:
+                    result = await auth.request_login_code(int(country), phone)
+                    status = result.get("status") if isinstance(result, dict) else None
+                    # A 2xx response permits code entry, not proof of SMS delivery.
+                    if type(status) is not int or not 200 <= status < 300:
+                        errors["base"] = "cannot_connect"
+                except (CatGenieException, RequestException, TimeoutError):
                     errors["base"] = "cannot_connect"
-                except Exception:  # noqa: BLE001
-                    _LOGGER.exception("Unexpected error requesting login code")
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.error("Unexpected error requesting login code (%s)", type(err).__name__)
                     errors["base"] = "unknown"
                 finally:
                     await auth.async_close()
@@ -91,10 +96,10 @@ class CatGenieConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
             except CatGenieAuthenticationError:
                 errors["base"] = "invalid_auth"
-            except CatGenieException:
+            except (CatGenieException, RequestException, TimeoutError):
                 errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error during login")
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.error("Unexpected error during login (%s)", type(err).__name__)
                 errors["base"] = "unknown"
             finally:
                 await auth.async_close()

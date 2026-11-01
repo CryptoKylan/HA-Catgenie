@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 
 from catgenie import (
     CatGenieAuthenticationError,
@@ -41,22 +42,25 @@ class CatGenieCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             update_interval=SCAN_INTERVAL_IDLE,
         )
         self.client = client
+        self._configuration_locks: dict[str, asyncio.Lock] = {}
 
     async def _async_update_data(self) -> dict[str, Device]:
         try:
             devices = await self.client.get_devices()
-        except CatGenieAuthenticationError as err:
+        except CatGenieAuthenticationError:
             raise ConfigEntryAuthFailed(
                 "CatGenie rejected the stored login; please sign in again"
-            ) from err
+            ) from None
         except CatGenieException as err:
-            raise UpdateFailed(f"CatGenie API error: {err}") from err
+            raise UpdateFailed(f"CatGenie API error ({type(err).__name__})") from None
         except ValidationError as err:
-            # The library validates responses strictly (e.g. enum values), so a
-            # new firmware value shows up here rather than as a silent bad state.
-            raise UpdateFailed(f"Unexpected CatGenie response format: {err}") from err
+            # Even loc/type/ctx can contain vendor data. Count only; never
+            # stringify the error or chain its input-bearing traceback.
+            raise UpdateFailed(
+                f"Unexpected CatGenie response format ({err.error_count()} validation errors)"
+            ) from None
         except Exception as err:  # noqa: BLE001 - curl_cffi network errors are not wrapped
-            raise UpdateFailed(f"Error communicating with CatGenie: {err}") from err
+            raise UpdateFailed(f"Error communicating with CatGenie ({type(err).__name__})") from None
 
         self.update_interval = (
             SCAN_INTERVAL_ACTIVE

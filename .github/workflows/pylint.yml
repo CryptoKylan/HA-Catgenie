@@ -1,23 +1,57 @@
-name: Pylint
+name: Offline runtime tests
 
-on: [push]
+on: [push, pull_request]
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  runtime-tests:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.8", "3.9", "3.10"]
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pylint
-    - name: Analysing the code with pylint
-      run: |
-        pylint $(git ls-files '*.py')
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install the tested runtime pins
+        run: python -m pip install homeassistant==2026.10.4 catgenie==0.1.6 pydantic==2.14.2 curl_cffi==0.17.0 PyYAML==6.0.3
+      - name: Full offline unittest suite
+        run: CATGENIE_REQUIRE_CONTRACTS=1 python -B -m unittest discover -s tests -q
+      - name: Actual HA runtime and flow regressions (network denied)
+        run: python -B tests/runtime_regression_cases.py
+      - name: Actual HA startup contract (synthetic responses)
+        run: python -B tests/read_information_ha_contract.py
+
+  minimum-runtime-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the minimum runtime
+        # aiodns 3.5 admits pycares 5 in metadata but cannot import its API.
+        # This constraint is for the historical HA test environment only.
+        run: python -m pip install homeassistant==2025.7.0 catgenie==0.1.6 probatio==0.13.0 pycares==4.11.0
+      - name: Check declared dependency compatibility
+        run: python -m pip check
+      - name: Full offline unittest suite on minimum HA
+        run: CATGENIE_REQUIRE_CONTRACTS=1 python -B -m unittest discover -s tests -q
+      - name: Actual HA runtime and flow regressions (network denied)
+        run: python -B tests/runtime_regression_cases.py
+      - name: Actual HA startup contract (synthetic responses)
+        run: python -B tests/read_information_ha_contract.py
+
+  dependency-compatibility:
+    # HA 2026.10.4 requires >=3.14.2. This 3.13 job tests dependency models
+    # and import seams ONLY; it does not install HA or claim HA compatibility.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install compatible dependency pins (no HA)
+        run: python -m pip install catgenie==0.1.6 pydantic==2.14.2 curl_cffi==0.17.0
+      - name: Offline adapter and model compatibility
+        run: python -B -m unittest discover -s tests -p test_unknown_operation_state.py -q

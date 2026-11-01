@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect your CatGenie A.I.",
-        "description": "Enter the phone number on your CatGenie account. A text message with a login code will be sent to it.",
+        "description": "Enter the phone number on your CatGenie account to request a text-message login code. A successful request does not guarantee delivery.",
         "data": {
           "country_code": "Country code",
           "phone": "Phone number"
@@ -24,7 +24,7 @@
     "error": {
       "invalid_phone": "Enter a country code and a phone number using digits.",
       "cannot_connect": "Could not reach CatGenie. Try again in a moment.",
-      "invalid_auth": "The code was rejected or has expired. Go back and request a new one.",
+      "invalid_auth": "The code was rejected or has expired. Close this flow and start setup or reauthentication again to request a new code.",
       "unknown": "Unexpected error. Check the Home Assistant log for details."
     },
     "abort": {
@@ -41,12 +41,13 @@
       "cartridge_capacity": { "name": "Cartridge capacity" },
       "operation_state": {
         "name": "Operation state",
-        "state": { "idle": "Idle", "cleaning": "Cleaning", "error": "Error" }
+        "state": { "idle": "Idle", "cleaning": "Cleaning", "paused": "Paused", "error": "Error" }
       },
       "operation_progress": { "name": "Operation progress" },
+      "operation_status": { "name": "Operation status" },
       "operation_error": { "name": "Operation error" },
       "cleaning_mode": {
-        "name": "Cleaning mode",
+        "name": "Reported activation mode",
         "state": {
           "cat": "Cat activation",
           "time": "Time activation",
@@ -54,11 +55,29 @@
         }
       },
       "scheduled_cycles": { "name": "Scheduled cycles" },
-      "cat_activation_delay": { "name": "Cat activation delay" },
-      "panel_lock_delay": { "name": "Panel lock delay" },
-      "cat_sensitivity": { "name": "Cat sensitivity" },
-      "volume_level": { "name": "Volume level" },
-      "network_type": { "name": "Network type" }
+      "cat_activation_delay": { "name": "Reported cat activation delay" },
+      "panel_lock_delay": { "name": "Reported auto-lock timeout" },
+      "cat_sensitivity": { "name": "Reported cat sensitivity" },
+      "volume_level": { "name": "Reported volume" },
+      "network_type": { "name": "Network type" },
+      "visits_today": { "name": "Visits today" },
+      "last_visit": { "name": "Last visit" },
+      "last_visit_duration": { "name": "Last visit duration" },
+      "aborted_cycles": { "name": "Aborted cycles" },
+      "cartridge_type": {
+        "name": "Cartridge type",
+        "state": {
+          "missing": "Missing",
+          "regular": "Regular",
+          "maintenance": "Maintenance",
+          "unknown": "Unknown"
+        }
+      },
+      "reported_timezone": { "name": "Reported timezone" },
+      "reported_dnd": { "name": "Reported do not disturb" },
+      "latest_notification": { "name": "Latest notification" },
+      "announced_firmware": { "name": "Announced firmware" },
+      "firmware_release_notes": { "name": "Firmware release notes" }
     },
     "binary_sensor": {
       "online": { "name": "Online" },
@@ -68,13 +87,74 @@
     },
     "button": {
       "start_cleaning": { "name": "Start cleaning" },
-      "stop_cleaning": { "name": "Stop cleaning" }
+      "stop_cleaning": { "name": "Stop cleaning" },
+      "pause_cleaning": { "name": "Pause cleaning" },
+      "resume_cleaning": { "name": "Resume cleaning" },
+      "abort_cleaning": { "name": "Abort cleaning" },
+      "no_scoop_cleaning": { "name": "No-scoop wash" }
     },
     "switch": {
       "panel_lock": { "name": "Panel lock" },
       "extra_dry": { "name": "Extra dry" },
       "extra_wash": { "name": "Extra wash" },
       "extra_shake": { "name": "Extra shake" }
+    },
+    "select": {
+      "activation_mode": {
+        "name": "Activation mode",
+        "state": {
+          "cat": "Cat activation",
+          "manual": "Manual",
+          "time": "Time activation"
+        }
+      }
+    },
+    "number": {
+      "volume": { "name": "Volume" },
+      "auto_lock_timeout": { "name": "Auto-lock timeout" },
+      "cat_activation_delay": { "name": "Cat activation delay" }
+    }
+  },
+  "services": {
+    "set_do_not_disturb": {
+      "name": "Set do not disturb",
+      "description": "Settings action for one CatGenie. This is the native action form, not a device-page time entity. Enabled clocks are converted on the selected IANA zone and reference date (today in that zone if omitted) to UTC HH:MM:SS, matching the official app's current-date save. Overnight windows use that same date for both ends. This is not a DST-safe recurring wall-clock guarantee, and firmware timezone or DST fields are not rewritten. Disable sends two empty clocks; firmware acceptance of this integration write is unverified. No automatic DST resave. The action does not enforce the app UI's ten-hour cap; that is not a proven server limit.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "CatGenie device. Not a raw vendor id."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Off sends two empty clocks without inventing times; firmware acceptance of this integration write is unverified."
+        },
+        "start_time": {
+          "name": "Start",
+          "description": "Local start when enabled."
+        },
+        "end_time": {
+          "name": "End",
+          "description": "Local end when enabled. Overnight windows stay on the same reference date."
+        },
+        "timezone": {
+          "name": "Time zone",
+          "description": "IANA zone for this save. Required when enabled. Not the host zone and not configuration.timezone."
+        },
+        "reference_date": {
+          "name": "Reference date",
+          "description": "Defaults to today in the selected zone."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Set cleaning schedule",
+      "description": "Replace the cleaning schedule from a native action form. This is not a device-page calendar and not a JSON text box. Each row is one local wall clock. The action converts every clock on the reference date in the required IANA zone and PUTs only {schedule: [UTC HH:mm:ss]}. It does not send mode, manual, Do Not Disturb, cat delay, volume, or auto-lock. An empty list is refused. Stored UTC clocks do not guarantee the same wall time after a DST change; nothing here resaves.",
+      "fields": {
+        "device_id": {"name": "Device", "description": "One CatGenie device registry entry."},
+        "times": {"name": "Local clocks", "description": "One to eight objects with a time field in zero-padded HH:mm:ss (seconds required, not HH:mm). Clocks must be unique and at least 120 minutes apart in both directions, including midnight."},
+        "zone": {"name": "IANA time zone", "description": "Explicit IANA zone, not configuration.timezone, a fixed offset, or the Home Assistant or device zone."},
+        "reference_date": {"name": "Reference date", "description": "YYYY-MM-DD; omit to use today in the selected zone. An empty string is refused. Every clock uses this date, not the next day."}
+      }
     }
   }
 }

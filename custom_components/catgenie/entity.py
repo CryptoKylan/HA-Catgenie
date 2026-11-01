@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable
+import re
 from typing import Any
 
 from catgenie import CatGenieException, Device
@@ -16,6 +17,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import CatGenieCoordinator
+from .local_errors import SettingsWriteRefused
+from .operation_post import OperationNotSent
 
 
 def extra(model: Any, key: str) -> Any:
@@ -25,6 +28,14 @@ def extra(model: Any, key: str) -> Any:
     ``totalSaniSolution`` are reachable through ``model_extra``.
     """
     return (getattr(model, "model_extra", None) or {}).get(key)
+
+
+def device_connections(mac_address: str) -> set[tuple[str, str]]:
+    """Only register a canonical MAC; never merge devices on an empty key."""
+    mac = format_mac(mac_address)
+    if re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac):
+        return {(CONNECTION_NETWORK_MAC, mac)}
+    return set()
 
 
 class CatGenieEntity(CoordinatorEntity[CatGenieCoordinator]):
@@ -37,6 +48,7 @@ class CatGenieEntity(CoordinatorEntity[CatGenieCoordinator]):
         super().__init__(coordinator)
         self._manufacturer_id = manufacturer_id
         device = coordinator.data[manufacturer_id]
+
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, manufacturer_id)},
             name=device.name,
@@ -45,7 +57,7 @@ class CatGenieEntity(CoordinatorEntity[CatGenieCoordinator]):
             sw_version=device.fw_version,
             hw_version=device.hw_revision,
             serial_number=manufacturer_id,
-            connections={(CONNECTION_NETWORK_MAC, format_mac(device.mac_address))},
+            connections=device_connections(device.mac_address),
         )
 
     @property
@@ -65,8 +77,12 @@ async def async_run_command(
     """Send a command, surface failures nicely, then refresh state."""
     try:
         await command
+    except OperationNotSent:
+        raise HomeAssistantError("CatGenie operation was not sent (local guard refusal).") from None
+    except SettingsWriteRefused:
+        raise HomeAssistantError("CatGenie settings were not changed (local guard refusal).") from None
     except CatGenieException as err:
-        raise HomeAssistantError(f"CatGenie request failed: {err}") from err
+        raise HomeAssistantError(f"CatGenie request failed ({type(err).__name__}).") from None
     except Exception as err:  # noqa: BLE001 - curl_cffi network errors are not wrapped
-        raise HomeAssistantError(f"Could not reach CatGenie: {err}") from err
+        raise HomeAssistantError(f"Could not reach CatGenie ({type(err).__name__}).") from None
     await coordinator.async_request_refresh()
