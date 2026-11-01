@@ -294,7 +294,8 @@ class RuntimeCases(unittest.IsolatedAsyncioTestCase):
                     await self.hass.async_start()
                     await integration.async_setup_entry(self.hass, entry)
                     session.close.assert_not_awaited()
-                    await self.hass.async_stop()
+                    with self.assertNoLogs("homeassistant.core", level="ERROR"):
+                        await self.hass.async_stop()
                     session.close.assert_awaited_once()
                     await next(cb for cb in callbacks if cb.__name__ == "_close_session")()
                     session.close.assert_awaited_once()

@@ -42,6 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CatGenieConfigEntry) -> 
     forwarding_started = False
     actions_started = False
     stop_updates: list[Callable[[], None]] = []
+    unsub_stop: Callable[[], None] | None = None
     updates: list[asyncio.Task] = []
 
     async def _close_once() -> None:
@@ -62,6 +63,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: CatGenieConfigEntry) -> 
 
     def _stop_updates() -> None:
         """Cancel only this setup's subscriptions and background reads."""
+        nonlocal unsub_stop
+        if unsub_stop is not None:
+            unsubscribe, unsub_stop = unsub_stop, None
+            unsubscribe()
         while stop_updates:
             try:
                 stop_updates.pop()()
@@ -72,6 +77,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: CatGenieConfigEntry) -> 
 
     async def _shutdown(_event: object) -> None:
         """Release the session on core shutdown as well as entry unload."""
+        nonlocal unsub_stop
+        # HA removes its one-time listener before invoking this callback.
+        unsub_stop = None
         _stop_updates()
         try:
             if updates:
@@ -104,9 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CatGenieConfigEntry) -> 
 
         entry.async_on_unload(_close_session)
         entry.async_on_unload(_stop_updates)
-        stop_updates.append(
-            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _shutdown)
-        )
+        unsub_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _shutdown)
 
         # Only the long-lived refresh token is stored. The access token is empty
         # at startup, so the first request refreshes it automatically.
